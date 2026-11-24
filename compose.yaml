@@ -1,0 +1,36 @@
+services:
+  oneclient:
+    image: oneproxy:latest
+    build: .
+    init: true
+    cap_drop:
+      - ALL
+    # warp-svc 在代理模式下也会在容器网络命名空间内安装 fwmark 规则。
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    # pasta 将宿主机 IPv6 路由带入独立网络命名空间。
+    network_mode: pasta
+    ports:
+      - "0.0.0.0:${WARP_HOST_PORT:-1080}:1080/tcp"
+    volumes:
+      - registration:/var/lib/cloudflare-warp
+    restart: always
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          trace=$$(curl -q --fail --silent --show-error --noproxy ''
+          --connect-timeout 4 --max-time 12
+          --proxy socks5h://127.0.0.1:1080
+          https://www.cloudflare.com/cdn-cgi/trace) &&
+          printf '%s\n' "$$trace" | grep -Eq '^warp=(on|plus)$$'
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  registration:
